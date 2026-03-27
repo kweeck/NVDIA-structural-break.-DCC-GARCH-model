@@ -119,8 +119,8 @@ IRFs are used to trace:
 * Impact of NVDA shocks on the sector (AMD, INTC, SOXX)
 * Reverse effects (sector → NVDA)
 
-[ГРАФИК IRF NVDA → SOXX]
-[ГРАФИК IRF SOXX → NVDA]
+![NVDA -> SOXX](images/irfnvd.png)
+![SOXX -> NVDA](images/irfsoxx.png)
 
 ---
 
@@ -144,9 +144,8 @@ Outputs:
 
 > The average and dynamic correlations between NVIDIA and other semiconductor assets decrease after 2015, indicating reduced dependence on sector-wide movements.
 
-[ГРАФИК DCC КОРРЕЛЯЦИЙ (ВСЕ ПАРЫ)]
-[ГРАФИК DCC ДЛЯ NVDA]
-[БОКСПЛОТ КОРРЕЛЯЦИЙ ДО/ПОСЛЕ]
+![Dynamic Correlations](images/dcorrall.png)
+![Boxplot](images/boxplot.png)
 
 ---
 
@@ -154,7 +153,7 @@ Outputs:
 
 A 52-week rolling correlation is computed to provide a non-parametric benchmark.
 
-[ГРАФИК ROLLING CORRELATION]
+![Rolling Correlation](images/rollcor.png)
 
 ---
 
@@ -167,8 +166,7 @@ Using the post-2015 model:
   * Conditional volatility
   * Conditional correlations
 
-[ГРАФИК ПРОГНОЗА ВОЛАТИЛЬНОСТИ]
-[ГРАФИК ПРОГНОЗА КОРРЕЛЯЦИЙ]
+![DCC-Volatility forecast ](images/dccvalfor.png)
 
 ---
 
