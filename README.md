@@ -187,8 +187,6 @@ source("R/structural_break/sb_nvda.R")
 source("R/analysis/var_dcc.R")
 ```
 
-Or render the full report:
-
 ## Limitations
 
 - The breakpoint (July 2015) is treated as fixed based on test consensus
