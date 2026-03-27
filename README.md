@@ -49,15 +49,16 @@ Methods used:
 * Sup-F, Ave-F, Exp-F tests (Andrews, Andrews-Ploberger)
 * CUSUM and MOSUM tests
 * Recursive and moving estimates (RE, ME)
-* Bai–Perron multiple breakpoint test
 
 Volatility clustering is accounted for using a **GJR-GARCH(1,1)** model, and structural break tests are applied to volatility-adjusted returns.
 
 **Result:**
 A structural break is identified around **July 2015**.
 
-[ГРАФИК ДЛЯ BAI-PERRON]
-[ГРАФИК ДЛЯ CUSUM / MOSUM]
+![Ave-F](images/ave.png)
+![Ave-F](images/olscums.png)
+![Ave-F](images/part.png)
+![Ave-F](images/re.png)
 
 ---
 
