@@ -2,7 +2,7 @@
 
 ![Language](https://img.shields.io/badge/language-R-276DC3?style=flat-square&logo=r)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![Status](https://img.shields.io/badge/status-complete-brightgreen?style=flat-square)
+![Status](https://img.shields.io/badge/status-WIP-brightgreen?style=flat-square)
 ![SSRN](https://img.shields.io/badge/SSRN-working%20paper-orange?style=flat-square)
 
 > Independent research project — applied financial econometrics using structural break detection, VAR, Granger causality, IRF, and DCC-GJR-GARCH on 25 years of semiconductor sector data.
