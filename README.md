@@ -68,12 +68,14 @@ Did NVIDIA's 2015 structural break alter not only its return level, but also its
 
 ### Stage 1 — Structural Break Detection
 
-Applied to GARCH-adjusted returns (GJR-GARCH(1,1) with skewed-t innovations) to remove volatility clustering before testing for mean shifts.
+Applied to GARCH-adjusted returns (AR(1) + GJR-GARCH(1,1) with skewed-t innovations) to remove volatility clustering before testing for mean shifts.
 
 | Test | Result |
 |---|---|
 | Ave-F / Exp-F | Significant |
 | OLS-CUSUM | Significant break in 2015 |
+| Recursive Estimates | Significant break in 2015 |
+| Partial structural break | Significant break in 2015 |
 | Bai-Perron |Insignificant, indicates to 2015 |
 
 ![Ave-F](images/ave.png)
