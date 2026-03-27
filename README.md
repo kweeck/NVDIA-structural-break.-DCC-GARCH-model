@@ -56,9 +56,9 @@ Volatility clustering is accounted for using a **GJR-GARCH(1,1)** model, and str
 A structural break is identified around **July 2015**.
 
 ![Ave-F](images/ave.png)
-![Ave-F](images/olscums.png)
-![Ave-F](images/part.png)
-![Ave-F](images/re.png)
+![OLS-CUMSUM](images/olscums.png)
+![Partial SB](images/part.png)
+![RE](images/re.png)
 
 ---
 
@@ -80,8 +80,8 @@ Comparison includes:
 **Insight:**
 Ignoring the structural break leads to materially different forecasts.
 
-[ГРАФИК ПРОГНОЗА ДО/ПОСЛЕ BREAK]
-[ГРАФИК СИМУЛИРОВАННЫХ ТРАЕКТОРИЙ]
+![Prices Forecast](images/pricefore.png)
+![Volatility forecast](images/volatil.png)
 
 ---
 
