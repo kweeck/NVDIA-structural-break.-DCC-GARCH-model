@@ -72,11 +72,9 @@ Applied to GARCH-adjusted returns (GJR-GARCH(1,1) with skewed-t innovations) to 
 
 | Test | Result |
 |---|---|
-| Sup-F (Andrews) | Significant, break at July 2015 |
 | Ave-F / Exp-F | Significant |
-| OLS-CUSUM | Stable within sub-periods |
-| Rec-CUSUM | Stable within sub-periods |
-| Bai-Perron | Optimal m=1, breakdate July 2015 |
+| OLS-CUSUM | Significant break in 2015 |
+| Bai-Perron |Insignificant, indicates to 2015 |
 
 ![Ave-F](images/ave.png)
 ![OLS-CUSUM](images/olscums.png)
