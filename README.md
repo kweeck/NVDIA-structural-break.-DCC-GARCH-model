@@ -78,6 +78,8 @@ Applied to GARCH-adjusted returns (GJR-GARCH(1,1) with skewed-t innovations) to 
 
 ![Ave-F](images/ave.png)
 ![OLS-CUSUM](images/olscums.png)
+![RE](images/re.png)
+![Partial](images/part.png)
 
 ---
 
