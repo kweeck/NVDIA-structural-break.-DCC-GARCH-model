@@ -58,7 +58,7 @@ Did NVIDIA's 2015 structural break alter not only its return level, but also its
 | Frequency | Weekly log-returns |
 | Period | 2001 – present |
 | Assets | NVDA, AMD, INTC, SOXX ETF |
-| Breakpoint | July 2015 (Bai-Perron) |
+| Breakpoint | July 2015 |
 | Pre-break obs. | 733 |
 | Post-break obs. | 555 |
 
