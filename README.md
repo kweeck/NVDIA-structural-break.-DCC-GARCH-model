@@ -207,14 +207,6 @@ source("sb_nvda.R")
 source("var_dcc.R")
 ```
 
----
-
-## Author
-
-[Your Name]
-
----
-
 ## Notes
 
 This project is intended as a demonstration of applied econometrics and financial time series modeling, with emphasis on:
