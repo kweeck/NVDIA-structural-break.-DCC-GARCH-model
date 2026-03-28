@@ -30,7 +30,7 @@ Did NVIDIA's 2015 structural break alter not only its return level, but also its
 | NVDA shock → INTC variance share | 15.9% | 1.4% ↓ |
 | Sector shock → SOXX variance share | 56.7% | 67.5% ↑ |
 
-**Summary:** NVIDIA transitioned from a niche sector leader whose lagged returns predicted the broad index, to an autonomous AI-driven asset subject to institutional rotation dynamics. The sector split into two camps — NVDA/AMD converged as AI companies, while INTC diverged.
+**Summary:** NVIDIA transitioned from a niche sector leader whose lagged returns predicted the broad index. The 2015 break coincides with NVIDIA's reclassification from a niche GPU manufacturer to a core AI infrastructure holding, consistent with the category-based comovement channel of Barberis et al. (2005). The sector split into two camps — NVDA/AMD converged as AI companies, while INTC diverged.
 
 ---
 
