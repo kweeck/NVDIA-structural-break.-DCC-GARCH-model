@@ -105,8 +105,65 @@ Residual diagnostics (Hosking, Li-McLeod) confirm white noise residuals. CUSUM s
 **Post-2015:** NVDA acquires a significant own lag (β = 0.158, p = 0.020) and positive drift (β = 0.010, p = 0.0002). The lagged leadership disappears.
 
 ---
+## Stage 4 — Sign-Restricted SVAR & FEVD
 
-### Stage 4 — Granger Causality
+To address the ordering dependence inherent in Cholesky-based identification, a sign-restricted SVAR was estimated following the Rubio-Ramírez (2010) rotation algorithm. Rather than imposing a recursive causal ordering, the identification rests on theoretically motivated sign restrictions on the impact matrix.
+
+### Identification
+
+The restrictions encode the following economic narrative:
+
+| Response | NVDA shock | AMD shock | INTC shock | Sector shock |
+|----------|-----------|-----------|------------|--------------|
+| NVDA | + | — | — | + |
+| AMD | + | + | — | + |
+| INTC | — | — | + | + |
+| SOXX | — | — | — | + |
+
+**NVDA shock** is identified as an idiosyncratic AI-driven shock: it must raise both NVDA and AMD (as co-beneficiaries of the AI narrative), while its effect on INTC and SOXX is left unrestricted. **Sector shock** is identified as a broad semiconductor shock that raises all four assets simultaneously. The remaining shocks are identified only by their own-variable sign.
+
+Out of 10,000 random orthogonal rotations, 2,940 (29.4%) satisfied the restrictions in the pre-2015 period, indicating strong compatibility between the restrictions and the data. IRFs are reported as posterior means with 68% credible bands across accepted rotations.
+
+### Structural Impulse Response Functions
+
+[график Sign SVAR IRF: NVDA_shock → SOXX, INTC, AMD (pre vs post)]
+
+[график Sign SVAR IRF: Sector_shock → NVDA (pre vs post)]
+
+The structural IRFs confirm the reduced-form findings. The response of SOXX to an NVDA shock at impact is positive in both periods (~1.6% pre-2015, ~1.4% post-2015), but the post-2015 credible band widens considerably, reflecting greater uncertainty around NVDA's sectoral transmission. The response of NVDA to a Sector shock remains stable across periods, consistent with NVDA's deeper integration into the broad semiconductor index post-2015 — a finding corroborated by the DCC results.
+
+### Forecast Error Variance Decomposition
+
+[график FEVD barplot: pre vs post для NVDA, AMD, INTC, SOXX]
+
+Given the fast mean reversion of the estimated VAR(1) — coefficients in the range of 0.06–0.18 — the IRF decays to near-zero within one week. As a result, the FEVD is effectively determined by the impact period and remains constant across horizons. The decomposition therefore captures the contemporaneous shock structure rather than dynamic propagation.
+
+| Variable | Source | Pre-2015 | Post-2015 | Δ |
+|----------|--------|----------|-----------|---|
+| NVDA | NVDA shock | 0.406 | 0.382 | −0.024 |
+| NVDA | Sector shock | 0.529 | 0.585 | +0.056 |
+| AMD | NVDA shock | 0.301 | 0.327 | +0.026 |
+| AMD | Sector shock | 0.432 | 0.427 | −0.005 |
+| INTC | NVDA shock | 0.159 | 0.014 | **−0.145** |
+| INTC | Sector shock | 0.544 | 0.616 | +0.072 |
+| SOXX | NVDA shock | 0.253 | 0.229 | −0.024 |
+| SOXX | Sector shock | 0.567 | 0.675 | +0.108 |
+
+**NVDA:** The idiosyncratic NVDA shock accounts for a slightly smaller share of its own variance post-2015 (38.2% vs 40.6%), while the Sector shock contribution rises from 52.9% to 58.5%. This is consistent with NVDA transitioning from a niche leader to a deeply sector-integrated asset subject to institutional rotation dynamics, as identified in the VAR and DCC stages.
+
+**AMD:** The share of variance explained by NVDA shock in AMD increases marginally post-2015 (30.1% → 32.7%), while AMD's own shock contribution remains stable (~24%). This supports the convergence narrative: AMD and NVDA became more tightly linked as AI companies, moving in response to the same idiosyncratic shock.
+
+**INTC:** The most pronounced structural shift in the entire decomposition. The contribution of NVDA shock to INTC variance collapses from 15.9% pre-2015 to 1.4% post-2015 — a reduction of 14.5 percentage points. Simultaneously, INTC's own shock contribution rises (26.6% → 36.9%) and the Sector shock share increases (54.4% → 61.6%). Post-2015, INTC variance is driven either by its own idiosyncratic dynamics or by the broad sector — but no longer by NVDA. Importantly, since no sign restriction was placed on INTC's response to NVDA shock (the cell is unrestricted), this result is not an artefact of identification: the data itself selected a near-zero response.
+
+**SOXX:** The Sector shock accounts for a growing share of the index's own variance (56.7% → 67.5%), while the NVDA shock contribution declines modestly (25.3% → 22.9%). The index became more driven by the common semiconductor factor and less by any single constituent's idiosyncratic shock — a sign of broader sector coordination post-2015.
+
+### Methodological note
+
+Since sign restrictions are imposed only at the impact horizon and the IRF decays within one period, the FEVD should be interpreted as a decomposition of contemporaneous variance rather than a long-horizon forecast error decomposition. For this reason, results across horizons 1–5 are numerically identical and only the impact-period decomposition is reported.
+
+---
+
+### Stage 5 — Granger Causality
 
 **System-level tests:**
 
@@ -129,7 +186,7 @@ The reversal of SOXX → NVDA causality is interpreted as **institutional rotati
 
 ---
 
-### Stage 5 — Impulse Response Functions
+### Stage 6 — Impulse Response Functions
 
 **NVDA → SOXX:** Significant positive response at week 1 before 2015 (~0.065, CI excludes zero). After 2015: response shrinks (~0.047) and becomes statistically insignificant.
 
@@ -140,7 +197,7 @@ The reversal of SOXX → NVDA causality is interpreted as **institutional rotati
 
 ---
 
-### Stage 6 — DCC-GJR-GARCH
+### Stage 7 — DCC-GJR-GARCH
 
 Univariate GJR-GARCH models (skewed-t innovations) estimated per asset, then combined in a DCC(1,1) structure. Estimated separately for each sub-period.
 
@@ -160,7 +217,7 @@ Univariate GJR-GARCH models (skewed-t innovations) estimated per asset, then com
 
 ---
 
-### Stage 7 — Rolling Correlation (Robustness Check)
+### Stage 8 — Rolling Correlation (Robustness Check)
 
 52-week rolling window provides a non-parametric benchmark confirming DCC results. Post-2015 divergence of NVDA–INTC and relative stability of NVDA–AMD are clearly visible.
 
