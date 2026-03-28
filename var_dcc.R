@@ -51,7 +51,7 @@ int_post <- na.omit(int_stat[paste0(break_date, "/")])
 sox_pre  <- na.omit(sox_stat[paste0("/",  break_date)])
 sox_post <- na.omit(sox_stat[paste0(break_date, "/")])
 
-# Data frames for VAR/DCC
+# Data frames for VAR / DCC
 df_pre <- data.frame(
   NVDA = as.numeric(nvd_pre),
   AMD  = as.numeric(amd_pre),
@@ -70,11 +70,11 @@ df_post <- data.frame(
 # BLOCK 1: VAR MODEL
 # ==============================================================================
 
-# Lag selection (all four criteria unanimously select VAR(1))
+# Lag selection — all four criteria (AIC, HQ, SC, FPE) unanimously select VAR(1)
 VARselect(df_pre,  lag.max = 20, type = "const")
 VARselect(df_post, lag.max = 20, type = "const")
 
-# Estimate VAR(1)
+# Estimate VAR(1) for each sub-period
 var_pre  <- VAR(df_pre,  p = 1, type = "const")
 var_post <- VAR(df_post, p = 1, type = "const")
 
@@ -82,8 +82,8 @@ coef(var_pre)
 coef(var_post)
 
 # Residual diagnostics: Portmanteau tests for no cross-correlation
-Hosking(var_pre,   lags = 2)
-LiMcLeod(var_pre,  lags = 2)
+Hosking(var_pre,  lags = 2)
+LiMcLeod(var_pre, lags = 2)
 
 Hosking(var_post,  lags = 2)
 LiMcLeod(var_post, lags = 2)
@@ -110,7 +110,7 @@ causality(var_post, cause = "AMD")$Granger
 causality(var_post, cause = "INTC")$Granger
 causality(var_post, cause = "SOXX")$Granger
 
-# --- Pairwise Granger tests: NVDA -> each company ---
+# --- Pairwise Granger tests: NVDA -> each asset ---
 grangertest(as.numeric(amd_pre)  ~ as.numeric(nvd_pre),  order = 1)
 grangertest(as.numeric(int_pre)  ~ as.numeric(nvd_pre),  order = 1)
 grangertest(as.numeric(sox_pre)  ~ as.numeric(nvd_pre),  order = 1)
@@ -128,7 +128,7 @@ grangertest(as.numeric(nvd_pre)  ~ as.numeric(amd_pre),  order = 1)
 grangertest(as.numeric(nvd_post) ~ as.numeric(amd_post), order = 1)
 
 # ==============================================================================
-# BLOCK 3: IMPULSE RESPONSE FUNCTIONS (IRF)
+# BLOCK 3: IMPULSE RESPONSE FUNCTIONS (reduced-form VAR)
 # ==============================================================================
 
 extract_irf <- function(irf_obj, period) {
@@ -202,7 +202,269 @@ irf_pre_nvda_soxx
 irf_post_nvda_soxx
 
 # ==============================================================================
-# BLOCK 4: DCC-GJR-GARCH
+# BLOCK 4: SIGN-RESTRICTED SVAR + FEVD
+# ==============================================================================
+
+# --- 4a. Rubio-Ramirez algorithm (random rotations) ---
+# Identification via sign restrictions avoids the arbitrary ordering
+# imposed by Cholesky decomposition.
+
+sign_restrictions_svar <- function(var_model, sign_mat, n_draws = 10000, n_ahead = 5) {
+
+  Sigma <- summary(var_model)$covres
+  P     <- t(chol(Sigma))
+  n     <- nrow(Sigma)
+  A     <- Acoef(var_model)[[1]]
+
+  accepted_irf <- list()
+  n_accept     <- 0
+
+  for (i in seq_len(n_draws)) {
+
+    # Random orthogonal matrix via QR decomposition
+    Z <- matrix(rnorm(n * n), n, n)
+    Q <- qr.Q(qr(Z))
+
+    # Align column signs so the diagonal of B is positive
+    B_cand <- P %*% Q
+    signs  <- sign(diag(B_cand))
+    signs[signs == 0] <- 1
+    Q      <- Q %*% diag(signs)
+    B_cand <- P %*% Q
+
+    rownames(B_cand) <- colnames(var_model$y)
+
+    # Check sign restrictions
+    check <- TRUE
+    for (r in seq_len(nrow(sign_mat))) {
+      for (c in seq_len(ncol(sign_mat))) {
+        if (!is.na(sign_mat[r, c])) {
+          if (sign(B_cand[r, c]) != sign_mat[r, c]) {
+            check <- FALSE
+            break
+          }
+        }
+      }
+      if (!check) break
+    }
+
+    if (check) {
+      n_accept <- n_accept + 1
+
+      # Compute full IRF for accepted rotation
+      irf_mat      <- array(0, dim = c(n, n, n_ahead + 1))
+      irf_mat[,,1] <- B_cand
+      Phi          <- diag(n)
+
+      for (h in seq_len(n_ahead)) {
+        Phi            <- A %*% Phi
+        irf_mat[,,h+1] <- Phi %*% B_cand
+      }
+
+      accepted_irf[[n_accept]] <- irf_mat
+    }
+  }
+
+  cat("Accepted:", n_accept, "of", n_draws,
+      "(", round(n_accept / n_draws * 100, 2), "%)\n")
+
+  if (n_accept == 0) stop("No rotations accepted — relax sign restrictions")
+
+  irf_array <- simplify2array(accepted_irf)
+
+  irf_mean  <- apply(irf_array, 1:3, mean)
+  irf_lower <- apply(irf_array, 1:3, quantile, probs = 0.16)
+  irf_upper <- apply(irf_array, 1:3, quantile, probs = 0.84)
+
+  vnames <- colnames(var_model$y)
+  dimnames(irf_mean)  <- list(vnames, vnames, 0:n_ahead)
+  dimnames(irf_lower) <- list(vnames, vnames, 0:n_ahead)
+  dimnames(irf_upper) <- list(vnames, vnames, 0:n_ahead)
+
+  return(list(
+    irf_mean  = irf_mean,
+    irf_lower = irf_lower,
+    irf_upper = irf_upper,
+    n_accept  = n_accept,
+    n_draws   = n_draws
+  ))
+}
+
+# --- 4b. Sign restrictions matrix ---
+# Variable order: NVDA, AMD, INTC, SOXX
+# Rows = responses, columns = structural shocks
+# +1 = positive impact required, NA = unrestricted
+#
+# Economic rationale:
+#   NVDA_shock:   positive for NVDA and AMD (AI convergence), unrestricted for INTC/SOXX
+#   AMD_shock:    positive for AMD, unrestricted otherwise
+#   INTC_shock:   positive for INTC, unrestricted otherwise
+#   Sector_shock: positive for all (broad semiconductor shock)
+
+sign_mat <- matrix(c(
+#  NVDA  AMD   INTC  Sector
+    +1,   NA,   NA,   +1,   # NVDA
+    +1,   +1,   NA,   +1,   # AMD
+    NA,   NA,   +1,   +1,   # INTC
+    NA,   NA,   NA,   +1    # SOXX
+), nrow = 4, ncol = 4, byrow = TRUE)
+
+rownames(sign_mat) <- c("NVDA", "AMD", "INTC", "SOXX")
+colnames(sign_mat) <- c("NVDA_shock", "AMD_shock", "INTC_shock", "Sector_shock")
+
+# --- 4c. Estimate sign-restricted SVAR ---
+set.seed(42)
+svar_sign_pre  <- sign_restrictions_svar(var_pre,  sign_mat, n_draws = 10000)
+svar_sign_post <- sign_restrictions_svar(var_post, sign_mat, n_draws = 10000)
+
+# Assign shock names to second dimension
+dimnames(svar_sign_pre$irf_mean)[[2]]  <- colnames(sign_mat)
+dimnames(svar_sign_pre$irf_lower)[[2]] <- colnames(sign_mat)
+dimnames(svar_sign_pre$irf_upper)[[2]] <- colnames(sign_mat)
+
+dimnames(svar_sign_post$irf_mean)[[2]]  <- colnames(sign_mat)
+dimnames(svar_sign_post$irf_lower)[[2]] <- colnames(sign_mat)
+dimnames(svar_sign_post$irf_upper)[[2]] <- colnames(sign_mat)
+
+# --- 4d. Plot structural IRFs ---
+plot_sign_irf <- function(svar_pre, svar_post,
+                           impulse  = "NVDA_shock",
+                           response = "SOXX",
+                           n_ahead  = 5,
+                           scale    = 100) {
+
+  shock_idx    <- which(colnames(sign_mat) == impulse)
+  response_idx <- which(rownames(sign_mat) == response)
+  h <- 0:n_ahead
+
+  pre_irf   <- svar_pre$irf_mean[response_idx,  shock_idx, ] * scale
+  pre_lower <- svar_pre$irf_lower[response_idx, shock_idx, ] * scale
+  pre_upper <- svar_pre$irf_upper[response_idx, shock_idx, ] * scale
+
+  post_irf   <- svar_post$irf_mean[response_idx,  shock_idx, ] * scale
+  post_lower <- svar_post$irf_lower[response_idx, shock_idx, ] * scale
+  post_upper <- svar_post$irf_upper[response_idx, shock_idx, ] * scale
+
+  ylim <- range(c(pre_lower, pre_upper, post_lower, post_upper))
+
+  par(mfrow = c(1, 2))
+
+  plot(h, pre_irf, type = "l", col = "steelblue", lwd = 2,
+       ylim = ylim, xlab = "Weeks", ylab = "Response (%)",
+       main = paste0("Sign SVAR: ", impulse, " \u2192 ", response, "\nPre-2015"))
+  polygon(c(h, rev(h)), c(pre_upper, rev(pre_lower)),
+          col = adjustcolor("steelblue", 0.2), border = NA)
+  abline(h = 0, lty = 2, col = "gray50")
+
+  plot(h, post_irf, type = "l", col = "coral", lwd = 2,
+       ylim = ylim, xlab = "Weeks", ylab = "Response (%)",
+       main = paste0("Sign SVAR: ", impulse, " \u2192 ", response, "\nPost-2015"))
+  polygon(c(h, rev(h)), c(post_upper, rev(post_lower)),
+          col = adjustcolor("coral", 0.2), border = NA)
+  abline(h = 0, lty = 2, col = "gray50")
+
+  par(mfrow = c(1, 1))
+}
+
+# Key shock-response pairs
+plot_sign_irf(svar_sign_pre, svar_sign_post, "NVDA_shock",   "SOXX")
+plot_sign_irf(svar_sign_pre, svar_sign_post, "Sector_shock", "NVDA")
+plot_sign_irf(svar_sign_pre, svar_sign_post, "NVDA_shock",   "AMD")
+plot_sign_irf(svar_sign_pre, svar_sign_post, "NVDA_shock",   "INTC")
+
+# --- 4e. Forecast Error Variance Decomposition (FEVD) ---
+# Note: IRF decays to near-zero by horizon 1 (fast-mean-reverting VAR(1)),
+# so FEVD is effectively constant across horizons and reflects impact-period shares.
+
+fevd_sign <- function(svar_result, sign_mat, n_ahead = 5) {
+
+  n      <- dim(svar_result$irf_mean)[1]
+  vnames <- dimnames(svar_result$irf_mean)[[1]]
+  snames <- colnames(sign_mat)
+
+  fevd_list <- list()
+
+  for (resp_idx in seq_len(n)) {
+    resp <- vnames[resp_idx]
+
+    mse_total <- numeric(n_ahead + 1)
+    mse_shock <- matrix(0, nrow = n_ahead + 1, ncol = n)
+
+    for (h in 0:n_ahead) {
+      for (s in seq_len(n)) {
+        # Cumulative squared IRF from horizon 0 to h
+        contrib <- sum(svar_result$irf_mean[resp_idx, s, 1:(h+1)]^2)
+        mse_shock[h+1, s] <- contrib
+      }
+      mse_total[h+1] <- sum(mse_shock[h+1, ])
+    }
+
+    fevd_mat <- sweep(mse_shock, 1, mse_total, "/")
+    colnames(fevd_mat) <- snames
+    rownames(fevd_mat) <- 0:n_ahead
+
+    fevd_list[[resp]] <- fevd_mat
+  }
+
+  return(fevd_list)
+}
+
+fevd_pre  <- fevd_sign(svar_sign_pre,  sign_mat, n_ahead = 5)
+fevd_post <- fevd_sign(svar_sign_post, sign_mat, n_ahead = 5)
+
+# Print summary at key horizons
+cat("=== FEVD Pre-2015 ===\n")
+for (v in c("NVDA", "AMD", "INTC", "SOXX")) {
+  cat("\n", v, "(horizons 1, 3, 5):\n")
+  print(round(fevd_pre[[v]][c(2, 4, 6), ], 3))
+}
+
+cat("\n=== FEVD Post-2015 ===\n")
+for (v in c("NVDA", "AMD", "INTC", "SOXX")) {
+  cat("\n", v, "(horizons 1, 3, 5):\n")
+  print(round(fevd_post[[v]][c(2, 4, 6), ], 3))
+}
+
+# Impact-period summary (horizon 0)
+cat("\n=== FEVD Summary (impact, horizon 0) ===\n")
+for (v in c("NVDA", "AMD", "INTC", "SOXX")) {
+  cat("\n", v, ":\n")
+  df <- rbind(
+    "Pre-2015"  = round(fevd_pre[[v]][1, ],  3),
+    "Post-2015" = round(fevd_post[[v]][1, ], 3)
+  )
+  print(df)
+}
+
+# Plot FEVD comparison: pre vs post for each variable
+plot_fevd_comparison <- function(fevd_pre, fevd_post, variable, horizon = 5) {
+
+  pre  <- fevd_pre[[variable]][horizon + 1, ]
+  post <- fevd_post[[variable]][horizon + 1, ]
+
+  mat <- rbind(pre, post)
+  rownames(mat) <- c("Pre-2015", "Post-2015")
+
+  barplot(mat,
+          beside    = TRUE,
+          col       = c("steelblue", "coral"),
+          main      = paste("FEVD:", variable, "| horizon", horizon),
+          ylab      = "Share of variance",
+          legend    = rownames(mat),
+          las       = 2,
+          cex.names = 0.85,
+          ylim      = c(0, 1))
+}
+
+par(mfrow = c(2, 2))
+plot_fevd_comparison(fevd_pre, fevd_post, "NVDA")
+plot_fevd_comparison(fevd_pre, fevd_post, "AMD")
+plot_fevd_comparison(fevd_pre, fevd_post, "INTC")
+plot_fevd_comparison(fevd_pre, fevd_post, "SOXX")
+par(mfrow = c(1, 1))
+
+# ==============================================================================
+# BLOCK 5: DCC-GJR-GARCH
 # ==============================================================================
 
 # --- Step 1: ARCH-LM test on VAR residuals ---
@@ -228,44 +490,44 @@ for (col in colnames(resid_post)) {
 
 # NVDA: GJR-GARCH to capture leverage effect
 spec_nvda_bef <- ugarchspec(
-  variance.model    = list(model = "gjrGARCH", garchOrder = c(1, 1)),
-  mean.model        = list(armaOrder = c(0, 0), include.mean = FALSE),
+  variance.model     = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = FALSE),
   distribution.model = "sstd"
 )
 spec_nvda_aft <- ugarchspec(
-  variance.model    = list(model = "gjrGARCH", garchOrder = c(1, 1)),
-  mean.model        = list(armaOrder = c(0, 0), include.mean = TRUE),
+  variance.model     = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = TRUE),
   distribution.model = "sstd"
 )
 
 # AMD: standard sGARCH
 spec_amd_bef <- ugarchspec(
-  variance.model    = list(model = "sGARCH", garchOrder = c(1, 1)),
-  mean.model        = list(armaOrder = c(0, 0), include.mean = FALSE),
+  variance.model     = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = FALSE),
   distribution.model = "sstd"
 )
 spec_amd_aft <- ugarchspec(
-  variance.model    = list(model = "sGARCH", garchOrder = c(1, 1)),
-  mean.model        = list(armaOrder = c(0, 0), include.mean = TRUE),
+  variance.model     = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = TRUE),
   distribution.model = "sstd"
 )
 
 # INTC: same spec for both periods
 spec_int <- ugarchspec(
-  variance.model    = list(model = "sGARCH", garchOrder = c(1, 1)),
-  mean.model        = list(armaOrder = c(0, 0), include.mean = FALSE),
+  variance.model     = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = FALSE),
   distribution.model = "sstd"
 )
 
 # SOXX
 spec_soxx_bef <- ugarchspec(
-  variance.model    = list(model = "sGARCH", garchOrder = c(1, 1)),
-  mean.model        = list(armaOrder = c(0, 0), include.mean = FALSE),
+  variance.model     = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = FALSE),
   distribution.model = "sstd"
 )
 spec_soxx_aft <- ugarchspec(
-  variance.model    = list(model = "sGARCH", garchOrder = c(1, 1)),
-  mean.model        = list(armaOrder = c(0, 0), include.mean = TRUE),
+  variance.model     = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = TRUE),
   distribution.model = "sstd"
 )
 
@@ -273,13 +535,13 @@ spec_soxx_aft <- ugarchspec(
 dcc_spec_bef <- dccspec(
   uspec        = multispec(list(spec_nvda_bef, spec_amd_bef, spec_int, spec_soxx_bef)),
   dccOrder     = c(1, 1),
-  distribution = "mvnorm"
+  distribution = "mvt"
 )
 
 dcc_spec_aft <- dccspec(
   uspec        = multispec(list(spec_nvda_aft, spec_amd_aft, spec_int, spec_soxx_aft)),
   dccOrder     = c(1, 1),
-  distribution = "mvnorm"
+  distribution = "mvt"
 )
 
 # --- Step 4: Fit DCC-GARCH ---
@@ -294,8 +556,8 @@ pairs_names <- c("NVDA-AMD", "NVDA-INTC", "NVDA-SOXX",
                  "AMD-INTC",  "AMD-SOXX",  "INTC-SOXX")
 
 extract_dcc_corr <- function(dcc_fit, period_label) {
-  R   <- rcor(dcc_fit)
-  Tobs <- dim(R)[3]
+  R     <- rcor(dcc_fit)
+  Tobs  <- dim(R)[3]
   pairs_idx <- list(
     c(2, 1), c(3, 1), c(4, 1),
     c(3, 2), c(4, 2), c(4, 3)
@@ -316,8 +578,26 @@ extract_dcc_corr <- function(dcc_fit, period_label) {
 corr_pre  <- extract_dcc_corr(dcc_fit_pre,  "Before 2015")
 corr_post <- extract_dcc_corr(dcc_fit_post, "After 2015")
 
-# --- Step 6: Summary table of mean correlations ---
+# --- Step 6: DCC parameter comparison (alpha, beta, persistence) ---
+get_dcc_pars <- function(fit_obj) {
+  all_coefs <- coef(fit_obj)
+  dcc_a <- all_coefs[grep("dcca1", names(all_coefs))]
+  dcc_b <- all_coefs[grep("dccb1", names(all_coefs))]
+  return(c(alpha = as.numeric(dcc_a), beta = as.numeric(dcc_b)))
+}
 
+compare_pars <- data.frame(
+  Parameter = c("DCC Alpha (a)", "DCC Beta (b)"),
+  Pre_SB    = get_dcc_pars(dcc_fit_pre),
+  Post_SB   = get_dcc_pars(dcc_fit_post)
+)
+compare_pars <- rbind(compare_pars,
+                      c("Persistence (a+b)",
+                        sum(compare_pars$Pre_SB),
+                        sum(compare_pars$Post_SB)))
+print(compare_pars)
+
+# --- Step 7: Summary table of mean correlations ---
 tbl_pre <- corr_pre %>%
   group_by(pair) %>%
   summarise(
@@ -339,11 +619,11 @@ cat("\n===== Mean dynamic correlations (post-2015) =====\n")
 print(tbl_post)
 
 cat("\n===== Change in mean correlation (post minus pre) =====\n")
-tbl_diff <- merge(tbl_pre, tbl_post, by = "pair", suffixes = c("_pre", "_post"))
-tbl_diff$delta <- round(tbl_diff$mean_corr_post - tbl_diff$mean_corr_pre, 4)
+tbl_diff        <- merge(tbl_pre, tbl_post, by = "pair", suffixes = c("_pre", "_post"))
+tbl_diff$delta  <- round(tbl_diff$mean_corr_post - tbl_diff$mean_corr_pre, 4)
 print(tbl_diff[, c("pair", "mean_corr_pre", "mean_corr_post", "delta")])
 
-# --- Step 7: Plots ---
+# --- Step 8: Plots ---
 
 # Normalize time within each period for comparability
 corr_all <- rbind(
@@ -351,7 +631,7 @@ corr_all <- rbind(
   corr_post %>% group_by(pair, period) %>% mutate(t_norm = (t - min(t)) / (max(t) - min(t)))
 )
 
-# 7a. All pairs, both periods (faceted)
+# 8a. All pairs, both periods (faceted)
 ggplot(corr_all, aes(x = t_norm, y = corr, color = period)) +
   geom_line(linewidth = 0.6, alpha = 0.85) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
@@ -370,7 +650,7 @@ ggplot(corr_all, aes(x = t_norm, y = corr, color = period)) +
     strip.text      = element_text(face = "bold")
   )
 
-# 7b. Focus: pairs involving NVDA
+# 8b. Focus: pairs involving NVDA
 corr_nvda <- corr_all %>% filter(grepl("NVDA", pair))
 
 ggplot(corr_nvda, aes(x = t_norm, y = corr, color = period)) +
@@ -390,7 +670,7 @@ ggplot(corr_nvda, aes(x = t_norm, y = corr, color = period)) +
     strip.text      = element_text(face = "bold")
   )
 
-# 7c. Boxplot: distribution of correlations pre vs post
+# 8c. Boxplot: distribution of correlations pre vs post
 ggplot(corr_all, aes(x = pair, y = corr, fill = period)) +
   geom_boxplot(alpha = 0.7, outlier.size = 0.8) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
@@ -407,7 +687,7 @@ ggplot(corr_all, aes(x = pair, y = corr, fill = period)) +
     legend.position = "bottom"
   )
 
-# --- Step 8: DCC-GARCH parameter summary ---
+# --- Step 9: DCC-GARCH parameter summary ---
 cat("\n===== DCC-GARCH parameters (pre-2015) =====\n")
 print(dcc_fit_pre)
 
@@ -415,7 +695,7 @@ cat("\n===== DCC-GARCH parameters (post-2015) =====\n")
 print(dcc_fit_post)
 
 # ==============================================================================
-# BLOCK 5: ROLLING CORRELATION (52-week window)
+# BLOCK 6: ROLLING CORRELATION (52-week window)
 # ==============================================================================
 
 nvda_full_xts <- rbind(nvd_pre, nvd_post)
@@ -449,7 +729,7 @@ ggplot(df_long, aes(x = date, y = correlation, color = pair)) +
   theme_minimal()
 
 # ==============================================================================
-# BLOCK 6: DCC-GARCH DIAGNOSTICS
+# BLOCK 7: DCC-GARCH DIAGNOSTICS
 # ==============================================================================
 # Evaluates whether the fitted DCC-GARCH adequately captures
 # ARCH effects and autocorrelation in each series.
@@ -460,42 +740,40 @@ run_diagnostics <- function(dcc_fit, period_label) {
   cat("\n", strrep("=", 60), "\n")
   cat(" Diagnostics:", period_label, "\n")
   cat(strrep("=", 60), "\n")
-  
+
   # Standardized residuals: z = epsilon / sigma
   z <- residuals(dcc_fit) / sigma(dcc_fit)
   colnames(z) <- series_names
-  
+
   for (s in series_names) {
     cat(sprintf("\n--- %s ---\n", s))
-    
-    # 1. ARCH-LM: should be insignificant if GARCH captured volatility clustering
-    arch  <- ArchTest(z[, s], lags = 5)
+
+    # ARCH-LM: should be insignificant if GARCH captured volatility clustering
+    arch <- ArchTest(z[, s], lags = 5)
     cat(sprintf("  ARCH-LM(5):      Chi2=%.3f, p=%.4f  %s\n",
                 arch$statistic, arch$p.value,
                 ifelse(arch$p.value < 0.05, "** ARCH remains", "OK")))
-    
-    # 2. Ljung-Box on residuals: checks for remaining autocorrelation in mean
-    lb    <- Box.test(z[, s], lag = 10, type = "Ljung-Box")
+
+    # Ljung-Box on residuals: checks for remaining autocorrelation in mean
+    lb <- Box.test(z[, s], lag = 10, type = "Ljung-Box")
     cat(sprintf("  Ljung-Box(10):   Chi2=%.3f, p=%.4f  %s\n",
                 lb$statistic, lb$p.value,
                 ifelse(lb$p.value < 0.05, "** autocorrelation remains", "OK")))
-    
-    # 3. Ljung-Box on squared residuals: checks for remaining volatility clustering
-    lb2   <- Box.test(z[, s]^2, lag = 10, type = "Ljung-Box")
+
+    # Ljung-Box on squared residuals: checks for remaining volatility clustering
+    lb2 <- Box.test(z[, s]^2, lag = 10, type = "Ljung-Box")
     cat(sprintf("  Ljung-Box^2(10): Chi2=%.3f, p=%.4f  %s\n",
                 lb2$statistic, lb2$p.value,
                 ifelse(lb2$p.value < 0.05, "** volatility clustering remains", "OK")))
-    
-    # 4. Jarque-Bera: checks if standardized residuals are normally distributed
-    jb    <- jarque.bera.test(z[, s])
+
+    # Jarque-Bera: checks if standardized residuals are normally distributed
+    jb <- jarque.bera.test(z[, s])
     cat(sprintf("  Jarque-Bera:     Chi2=%.3f, p=%.4f  %s\n",
                 jb$statistic, jb$p.value,
                 ifelse(jb$p.value < 0.05, "** non-normal residuals", "OK")))
   }
-  
-  # --- DCC part: cross-product of standardized residuals ---
-  # If DCC correctly captures correlation dynamics,
-  # products zi * zj should show no autocorrelation
+
+  # DCC cross-residual check: products zi*zj should show no autocorrelation
   cat("\n--- DCC cross-residual Ljung-Box (zi * zj, lag=10) ---\n")
   pairs_diag <- list(
     c("NVDA", "AMD"), c("NVDA", "INTC"), c("NVDA", "SOXX"),
@@ -514,7 +792,7 @@ run_diagnostics(dcc_fit_pre,  "Pre-2015")
 run_diagnostics(dcc_fit_post, "Post-2015")
 
 # ==============================================================================
-# BLOCK 7: DCC-GARCH FORECAST (12 weeks ahead)
+# BLOCK 8: DCC-GARCH FORECAST (12 weeks ahead)
 # ==============================================================================
 # Forecasts conditional volatility (sigma) and correlations (rho)
 # based on the post-2015 model — the current regime.
@@ -523,8 +801,7 @@ n_ahead <- 12
 
 fc_post <- dccforecast(dcc_fit_post, n.ahead = n_ahead)
 
-# --- 7a. Volatility forecast ---
-# sigma[t+h] for each series
+# --- Volatility forecast ---
 sigma_fc <- sigma(fc_post)   # matrix [n_ahead x 4]
 colnames(sigma_fc) <- series_names
 
@@ -536,9 +813,9 @@ sigma_ann <- sigma_fc * sqrt(52)
 cat("\n===== Annualized volatility forecast (sigma * sqrt(52)) =====\n")
 print(round(sigma_ann, 4))
 
-# Plot: forecasted weekly sigma for all series
+# Plot forecasted weekly sigma
 sigma_df <- as.data.frame(sigma_fc) %>%
-  setNames(series_names) %>%          # <- добавить эту строку
+  setNames(series_names) %>%
   mutate(horizon = 1:n_ahead) %>%
   pivot_longer(-horizon, names_to = "series", values_to = "sigma")
 
@@ -556,8 +833,7 @@ ggplot(sigma_df, aes(x = horizon, y = sigma, color = series)) +
   theme_minimal(base_size = 11) +
   theme(legend.position = "bottom")
 
-# --- 7b. Correlation forecast ---
-# rho[t+h] for each pair
+# --- Correlation forecast ---
 R_fc <- rcor(fc_post)[[1]]   # array [4 x 4 x n_ahead]
 
 pairs_idx <- list(
@@ -580,13 +856,13 @@ print(
   corr_fc_df %>%
     group_by(pair) %>%
     summarise(
-      h1  = round(corr[horizon == 1],        4),
-      h6  = round(corr[horizon == 6],        4),
-      h12 = round(corr[horizon == n_ahead],  4)
+      h1  = round(corr[horizon == 1],       4),
+      h6  = round(corr[horizon == 6],       4),
+      h12 = round(corr[horizon == n_ahead], 4)
     )
 )
 
-# Plot: forecasted correlations for all pairs
+# Plot forecasted correlations
 ggplot(corr_fc_df, aes(x = horizon, y = corr, color = pair)) +
   geom_line(linewidth = 0.8) +
   geom_point(size = 1.5) +
@@ -601,7 +877,3 @@ ggplot(corr_fc_df, aes(x = horizon, y = corr, color = pair)) +
   ) +
   theme_minimal(base_size = 11) +
   theme(legend.position = "bottom")
-
-
-
-
