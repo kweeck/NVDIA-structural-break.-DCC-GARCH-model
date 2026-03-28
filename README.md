@@ -129,7 +129,7 @@ Out of 10,000 random orthogonal rotations, 2,940 (29.4%) satisfied the restricti
 
 ![SVAR IRF: NVDA → SOXX (pre vs post)](images/svarnvdsox.png)
 ![SVAR IRF: SOXX → NVDA (pre vs post)](images/svarsoxnvd.png)
-![SVAR IRF: NVDA → AMD (pre vs post)](images/svarnvdamd.png)
+![SVAR IRF: NVDA → AMD (pre vs post)](images/svardnvdamd.png)
 ![SVAR IRF: NVDA → INTC (pre vs post)](images/svarnvdint.png)
 The structural IRFs confirm the reduced-form findings. The response of SOXX to an NVDA shock at impact is positive in both periods (~1.6% pre-2015, ~1.4% post-2015), but the post-2015 credible band widens considerably, reflecting greater uncertainty around NVDA's sectoral transmission. The response of NVDA to a Sector shock remains stable across periods, consistent with NVDA's deeper integration into the broad semiconductor index post-2015 — a finding corroborated by the DCC results.
 
