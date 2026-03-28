@@ -27,6 +27,8 @@ Did NVIDIA's 2015 structural break alter not only its return level, but also its
 | DCC persistence (dccb1) | 0.972 | 0.908 |
 | NVDA–AMD correlation | ~0.50 | ~0.60 ↑ |
 | NVDA–INTC correlation | ~0.50 | ~0.40 ↓ |
+| NVDA shock → INTC variance share | 15.9% | 1.4% ↓ |
+| Sector shock → SOXX variance share | 56.7% | 67.5% ↑ |
 
 **Summary:** NVIDIA transitioned from a niche sector leader whose lagged returns predicted the broad index, to an autonomous AI-driven asset subject to institutional rotation dynamics. The sector split into two camps — NVDA/AMD converged as AI companies, while INTC diverged.
 
