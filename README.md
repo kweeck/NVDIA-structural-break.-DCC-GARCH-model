@@ -126,15 +126,16 @@ Out of 10,000 random orthogonal rotations, 2,940 (29.4%) satisfied the restricti
 
 ### Structural Impulse Response Functions
 
-[график Sign SVAR IRF: NVDA_shock → SOXX, INTC, AMD (pre vs post)]
 
-[график Sign SVAR IRF: Sector_shock → NVDA (pre vs post)]
-
+![SVAR IRF: NVDA → SOXX (pre vs post)](images/svarnvdsox.png)
+![SVAR IRF: SOXX → NVDA (pre vs post)](images/svarsoxnvd.png)
+![SVAR IRF: NVDA → AMD (pre vs post)](images/svarnvdamd.png)
+![SVAR IRF: NVDA → INTC (pre vs post)](images/svarnvdint.png)
 The structural IRFs confirm the reduced-form findings. The response of SOXX to an NVDA shock at impact is positive in both periods (~1.6% pre-2015, ~1.4% post-2015), but the post-2015 credible band widens considerably, reflecting greater uncertainty around NVDA's sectoral transmission. The response of NVDA to a Sector shock remains stable across periods, consistent with NVDA's deeper integration into the broad semiconductor index post-2015 — a finding corroborated by the DCC results.
 
 ### Forecast Error Variance Decomposition
 
-[график FEVD barplot: pre vs post для NVDA, AMD, INTC, SOXX]
+![FEVD barplot: pre vs post для NVDA, AMD, INTC, SOXX (pre vs post)](images/fevd.png)
 
 Given the fast mean reversion of the estimated VAR(1) — coefficients in the range of 0.06–0.18 — the IRF decays to near-zero within one week. As a result, the FEVD is effectively determined by the impact period and remains constant across horizons. The decomposition therefore captures the contemporaneous shock structure rather than dynamic propagation.
 
